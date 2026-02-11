@@ -27,6 +27,8 @@ type WizardConfig struct {
 func RunInteractiveWizard() (*WizardConfig, error) {
 	reader := bufio.NewReader(os.Stdin)
 
+	printWizardHeader()
+
 	readLine := func(prompt, def string) (string, error) {
 		fmt.Printf("%s [%s]: ", prompt, def)
 		text, err := reader.ReadString('\n')
@@ -101,3 +103,28 @@ func RunInteractiveWizard() (*WizardConfig, error) {
 	return cfg, nil
 }
 
+// printWizardHeader renders a simple, responsive ASCII header for the wizard.
+func printWizardHeader() {
+	width := 80
+	if w := os.Getenv("COLUMNS"); w != "" {
+		// Best-effort; ignore parse errors and fall back to default.
+		if v, err := strconv.Atoi(w); err == nil && v > 20 {
+			width = v
+		}
+	}
+	if width > 60 {
+		width = 60
+	}
+
+	border := ""
+	for i := 0; i < width; i++ {
+		border += "="
+	}
+
+	fmt.Println()
+	fmt.Println(border)
+	fmt.Println(" httpcl interactive setup")
+	fmt.Println(border)
+	fmt.Println(" Answer the following questions to configure your benchmark.")
+	fmt.Println()
+}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"syscall"
@@ -63,10 +62,13 @@ func (o *Orchestrator) Run() error {
 		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 	}
 
-	fmt.Fprintf(os.Stdout, "Starting httpcl benchmark -> %s\n", o.cfg.URL)
-	fmt.Fprintf(os.Stdout, " workers=%d connections=%d pipeline=%d duration=%s\n",
-		o.cfg.Workers, o.cfg.Connections, o.cfg.Pipeline, o.cfg.Duration)
-	fmt.Fprintf(os.Stdout, " binary=%s\n", filepath.Base(os.Args[0]))
+	ui.PrintRunHeader(
+		o.cfg.URL,
+		o.cfg.Workers,
+		o.cfg.Connections,
+		o.cfg.Pipeline,
+		o.cfg.Duration.String(),
+	)
 
 	// Context for total duration and signal handling.
 	ctx, cancel := context.WithTimeout(context.Background(), o.cfg.Duration)

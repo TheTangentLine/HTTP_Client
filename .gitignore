@@ -1,0 +1,14 @@
+.DS_Store
+.idea
+.vscode
+.cursor
+.cursorrules
+.cursorrules.md
+.cursorrules.txt
+.cursorrules.yaml
+.cursorrules.yml
+.cursorrules.json
+.cursorrules.jsonc
+.cursorrules.json5
+.cursorrules.jsonld
+

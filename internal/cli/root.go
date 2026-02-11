@@ -83,6 +83,9 @@ func init() {
 
 // Execute runs the root cobra command.
 func Execute() {
+	// Intro banner shown once at startup.
+	ui.PrintIntroBanner()
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
