@@ -32,3 +32,5 @@ You are a senior Go engineer. Follow these rules strictly to ensure the codebase
 - **Slice Pre-allocation:** Use `make([]T, 0, length)` if the final size is known to avoid re-allocations.
 - **Avoid Init:** Use explicit initialization functions rather than `init()` blocks unless absolutely necessary.
 - **Pointer Usage:** Only use pointers if the struct is large or if you need to modify the receiver. For small, immutable data, pass by value.
+
+Reference @SPEC.md for project intent and @ARCHITECTURE.md for folder structure.
