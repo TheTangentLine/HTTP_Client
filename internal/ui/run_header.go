@@ -2,6 +2,15 @@ package ui
 
 import "fmt"
 
+// PrintStepResult prints a preflight step result (e.g. DNS: OK) before the run header.
+func PrintStepResult(name, value string, ok bool) {
+	if ok {
+		fmt.Printf("  %s%s%s : %s%s%s\n", colorDim, name, colorReset, colorGreen, value, colorReset)
+	} else {
+		fmt.Printf("  %s%s%s : %s%s%s\n", colorDim, name, colorReset, colorYellow, value, colorReset)
+	}
+}
+
 // PrintRunHeader renders a colorful header for a single benchmark run.
 func PrintRunHeader(url string, workers, connections, pipeline int, duration string) {
 	fmt.Println()
