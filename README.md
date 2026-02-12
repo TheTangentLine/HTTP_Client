@@ -2,6 +2,12 @@
 
 `httpcl` is a high‑performance HTTP benchmarking CLI written in Go. It supports interactive and direct modes, persistent connections, and real‑time, ASCII‑only terminal UI.
 
+### Demo
+
+Below is a short demo of `httpcl` in action:
+
+![HTTPCL demo](https://github.com/user-attachments/assets/e8c599d7-e109-4581-9979-f1a0204677dd)
+
 ### Requirements
 
 - **Go** 1.21 or newer installed (`go version` to check).
