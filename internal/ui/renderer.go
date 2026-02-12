@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"syscall"
@@ -10,6 +11,23 @@ import (
 
 	"github.com/thetangentline/httpcl/internal/stats"
 )
+
+// humanizeBytes formats bytes as KB, MB, or GB.
+func humanizeBytes(b float64) string {
+	if math.IsNaN(b) || b < 0 {
+		return "0 B"
+	}
+	switch {
+	case b >= 1e9:
+		return fmt.Sprintf("%.2f GB", b/1e9)
+	case b >= 1e6:
+		return fmt.Sprintf("%.2f MB", b/1e6)
+	case b >= 1e3:
+		return fmt.Sprintf("%.2f KB", b/1e3)
+	default:
+		return fmt.Sprintf("%.0f B", b)
+	}
+}
 
 // ANSI color helpers (8/16-color safe).
 const (
@@ -62,6 +80,27 @@ func termWidth() int {
 	return int(ws.cols)
 }
 
+// visibleLen returns the rune length of s without ANSI escape sequences.
+func visibleLen(s string) int {
+	n := 0
+	i := 0
+	for i < len(s) {
+		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
+			i += 2
+			for i < len(s) && (s[i] < 0x40 || s[i] == ';') {
+				i++
+			}
+			if i < len(s) {
+				i++
+			}
+			continue
+		}
+		n++
+		i++
+	}
+	return n
+}
+
 // truncateToWidth ensures the line fits in the current terminal width.
 func truncateToWidth(s string, width int) string {
 	if width <= 0 || len(s) <= width {
@@ -109,7 +148,7 @@ func (r *asciiRenderer) Render(snap stats.Snapshot) {
 		snap.TotalRequests,
 		colorGreen, snap.Successes, colorReset,
 		colorRed, snap.Errors, colorReset,
-		snap.RequestsPerS,
+		snap.RequestsPerSAvg,
 		snap.LatencyP50.Truncate(10*time.Microsecond),
 	)
 
@@ -123,6 +162,63 @@ func (r *asciiRenderer) RenderFinal(snap stats.Snapshot) {
 	r.clearLine()
 	fmt.Fprintln(os.Stdout)
 
+	padTo := func(s string, n int) string {
+		need := n - visibleLen(s)
+		if need <= 0 {
+			return s
+		}
+		return s + strings.Repeat(" ", need)
+	}
+	cellPad := 2 // left padding inside each cell
+	cell := func(s string, w int) string {
+		inner := strings.Repeat(" ", cellPad) + s
+		return padTo(inner, w)
+	}
+	latMs := func(d time.Duration) string { return fmt.Sprintf("%d ms", d.Milliseconds()) }
+
+	// Grid column widths: Stat, then 7 metric columns
+	cw := []int{12, 12, 12, 12, 12, 12, 12, 12}
+	gridTop := func() {
+		fmt.Fprintf(os.Stdout, "┌%s┬%s┬%s┬%s┬%s┬%s┬%s┬%s┐\n",
+			strings.Repeat("─", cw[0]), strings.Repeat("─", cw[1]), strings.Repeat("─", cw[2]),
+			strings.Repeat("─", cw[3]), strings.Repeat("─", cw[4]), strings.Repeat("─", cw[5]),
+			strings.Repeat("─", cw[6]), strings.Repeat("─", cw[7]))
+	}
+	gridMid := func() {
+		fmt.Fprintf(os.Stdout, "├%s┼%s┼%s┼%s┼%s┼%s┼%s┼%s┤\n",
+			strings.Repeat("─", cw[0]), strings.Repeat("─", cw[1]), strings.Repeat("─", cw[2]),
+			strings.Repeat("─", cw[3]), strings.Repeat("─", cw[4]), strings.Repeat("─", cw[5]),
+			strings.Repeat("─", cw[6]), strings.Repeat("─", cw[7]))
+	}
+	gridBot := func() {
+		fmt.Fprintf(os.Stdout, "└%s┴%s┴%s┴%s┴%s┴%s┴%s┴%s┘\n",
+			strings.Repeat("─", cw[0]), strings.Repeat("─", cw[1]), strings.Repeat("─", cw[2]),
+			strings.Repeat("─", cw[3]), strings.Repeat("─", cw[4]), strings.Repeat("─", cw[5]),
+			strings.Repeat("─", cw[6]), strings.Repeat("─", cw[7]))
+	}
+	gridRow := func(a1, a2, a3, a4, a5, a6, a7, a8 string) {
+		fmt.Fprintf(os.Stdout, "│%s│%s│%s│%s│%s│%s│%s│%s│\n",
+			cell(a1, cw[0]), cell(a2, cw[1]), cell(a3, cw[2]), cell(a4, cw[3]),
+			cell(a5, cw[4]), cell(a6, cw[5]), cell(a7, cw[6]), cell(a8, cw[7]))
+	}
+
+	fmt.Fprintf(os.Stdout, "%s%s%s\n", colorBold, "Latency (ms)", colorReset)
+	gridTop()
+	gridRow(colorCyan+"Stat"+colorReset, colorCyan+"2.5%"+colorReset, colorCyan+"50%"+colorReset, colorCyan+"97.5%"+colorReset, colorCyan+"99%"+colorReset, colorCyan+"Avg"+colorReset, colorCyan+"Stdev"+colorReset, colorCyan+"Max"+colorReset)
+	gridMid()
+	gridRow("Latency", latMs(snap.LatencyP25), latMs(snap.LatencyP50), latMs(snap.LatencyP975), latMs(snap.LatencyP99), latMs(snap.LatencyAvg), latMs(snap.LatencyStdev), latMs(snap.LatencyMax))
+	gridBot()
+	fmt.Fprintln(os.Stdout)
+
+	fmt.Fprintf(os.Stdout, "%s%s%s\n", colorBold, "Throughput", colorReset)
+	gridTop()
+	gridRow(colorCyan+"Stat"+colorReset, colorCyan+"1%"+colorReset, colorCyan+"2.5%"+colorReset, colorCyan+"50%"+colorReset, colorCyan+"97.5%"+colorReset, colorCyan+"Avg"+colorReset, colorCyan+"Stdev"+colorReset, colorCyan+"Min"+colorReset)
+	gridMid()
+	gridRow("Req/Sec", fmt.Sprintf("%.0f", snap.RPSP01), fmt.Sprintf("%.0f", snap.RPSP025), fmt.Sprintf("%.0f", snap.RPSP50), fmt.Sprintf("%.0f", snap.RPSP975), fmt.Sprintf("%.2f", snap.RequestsPerSAvg), fmt.Sprintf("%.0f", snap.RPSStdev), fmt.Sprintf("%.0f", snap.RPSMin))
+	gridRow("Bytes/Sec", humanizeBytes(snap.BytesPerSP01), humanizeBytes(snap.BytesPerSP025), humanizeBytes(snap.BytesPerSP50), humanizeBytes(snap.BytesPerSP975), humanizeBytes(snap.BytesPerSAvg), humanizeBytes(snap.BytesPerSStdev), humanizeBytes(snap.BytesPerSMin))
+	gridBot()
+	fmt.Fprintln(os.Stdout)
+
 	width := termWidth()
 	if width <= 0 {
 		width = 80
@@ -130,66 +226,31 @@ func (r *asciiRenderer) RenderFinal(snap stats.Snapshot) {
 	if width > 72 {
 		width = 72
 	}
-
 	inner := width - 2
-
-	// Simple box around the final report.
-	hLine := ""
-	for i := 0; i < inner; i++ {
-		hLine += "─"
-	}
+	hLine := strings.Repeat("─", inner)
 
 	fmt.Fprintf(os.Stdout, "┌%s┐\n", hLine)
-	baseTitle := " HTTPCL BENCHMARK REPORT "
-	if len(baseTitle) > inner {
-		baseTitle = baseTitle[:inner]
-	}
-	padding := inner - len(baseTitle)
-	if padding < 0 {
-		padding = 0
-	}
-	// Bold, slightly “larger-feel” title while keeping box alignment by
-	// measuring width from the uncolored text and only coloring the content.
-	coloredTitle := colorBold + baseTitle + colorReset
-	fmt.Fprintf(os.Stdout, "│%s%s│\n", coloredTitle, strings.Repeat(" ", padding))
+	fmt.Fprintf(os.Stdout, "│%s│\n", padTo(" "+colorBold+"Summary"+colorReset, inner))
 	fmt.Fprintf(os.Stdout, "├%s┤\n", hLine)
 
-	row := func(label, value, color string) {
-		// Build uncolored text for width calculations.
-		baseLabel := label
-		maxValWidth := inner - (len(" ") + len(baseLabel) + len(" : "))
-		if maxValWidth < 0 {
-			maxValWidth = 0
+	summaryRow := func(label, value string, valueColor string) {
+		if valueColor == "" {
+			valueColor = colorReset
 		}
-		if len(value) > maxValWidth {
-			value = value[:maxValWidth]
-		}
-
-		visible := fmt.Sprintf(" %s : %s", baseLabel, value)
-		if len(visible) > inner {
-			visible = visible[:inner]
-		}
-		padding := inner - len(visible)
-		if padding < 0 {
-			padding = 0
-		}
-
-		labelPart := baseLabel
-		if color != "" {
-			labelPart = color + baseLabel + colorReset
-		}
-		colored := fmt.Sprintf(" %s : %s", labelPart, value)
-
-		fmt.Fprintf(os.Stdout, "│%s%s│\n", colored, strings.Repeat(" ", padding))
+		s := " " + colorBold + label + colorReset + " : " + valueColor + value + colorReset
+		fmt.Fprintf(os.Stdout, "│%s│\n", padTo(s, inner))
+	}
+	summaryRowColored := func(label, value string, rowColor string) {
+		s := " " + rowColor + colorBold + label + colorReset + rowColor + " : " + value + colorReset
+		fmt.Fprintf(os.Stdout, "│%s│\n", padTo(s, inner))
 	}
 
-	row("Total Requests", fmt.Sprintf("%d", snap.TotalRequests), "")
-	row("Successes", fmt.Sprintf("%d", snap.Successes), colorGreen)
-	row("Errors", fmt.Sprintf("%d", snap.Errors), colorRed)
-	row("Requests / sec", fmt.Sprintf("%.2f", snap.RequestsPerS), colorCyan)
-	row("P50 Latency", snap.LatencyP50.String(), "")
-	row("P95 Latency", snap.LatencyP95.String(), "")
-	row("P99 Latency", snap.LatencyP99.String(), "")
+	summaryRow("Total Requests", fmt.Sprintf("%d", snap.TotalRequests), "")
+	summaryRowColored("Successes", fmt.Sprintf("%d", snap.Successes), colorGreen)
+	summaryRowColored("Errors", fmt.Sprintf("%d", snap.Errors), colorRed)
+	summaryRow("Duration", snap.Duration.String(), "")
+	summaryRow("Data sent", humanizeBytes(float64(snap.TotalBytesSent)), colorCyan)
+	summaryRow("Data received", humanizeBytes(float64(snap.TotalBytesRecv)), colorCyan)
 
 	fmt.Fprintf(os.Stdout, "└%s┘\n", hLine)
 	fmt.Fprintf(os.Stdout, "%sDone.%s\n", colorDim, colorReset)
