@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -40,15 +42,23 @@ func worker(
 
 // runPipelineSlot issues HTTP requests in a loop until the context is done.
 // One goroutine per pipeline slot gives concurrent in-flight requests per worker.
+// When cfg.Body is set (POST/PUT/PATCH), each request is built with a fresh body reader.
 func runPipelineSlot(
 	ctx context.Context,
 	client *http.Client,
 	cfg Config,
 	collector *stats.Collector,
 ) {
-	req, err := http.NewRequestWithContext(ctx, cfg.Method, cfg.URL, nil)
+	var bodyReader io.Reader
+	if len(cfg.Body) > 0 {
+		bodyReader = bytes.NewReader(cfg.Body)
+	}
+	req, err := http.NewRequestWithContext(ctx, cfg.Method, cfg.URL, bodyReader)
 	if err != nil {
 		return
+	}
+	if len(cfg.Body) > 0 {
+		req.ContentLength = int64(len(cfg.Body))
 	}
 
 	for {
@@ -56,16 +66,31 @@ func runPipelineSlot(
 		case <-ctx.Done():
 			return
 		default:
+			// With a body we must create a new request each time (reader is consumed).
+			r := req
+			if len(cfg.Body) > 0 {
+				r, err = http.NewRequestWithContext(ctx, cfg.Method, cfg.URL, bytes.NewReader(cfg.Body))
+				if err != nil {
+					return
+				}
+				r.ContentLength = int64(len(cfg.Body))
+			}
+
+			bytesSent := uint64(len(cfg.Body))
+
 			start := time.Now()
-			resp, err := client.Do(req)
+			resp, err := client.Do(r)
 			latency := time.Since(start)
 
-			success := err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 500
-			collector.Record(latency, success)
-
+			var bytesRecv uint64
 			if resp != nil && resp.Body != nil {
+				n, _ := io.Copy(io.Discard, resp.Body)
+				bytesRecv = uint64(n)
 				_ = resp.Body.Close()
 			}
+
+			success := err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 500
+			collector.Record(latency, success, bytesSent, bytesRecv)
 		}
 	}
 }
