@@ -83,3 +83,24 @@ httpcl run \
   - P50, P95, P99 latency
 
 Abort early with **Ctrl+C**; stats collected so far will still be reported.
+
+### Testing
+
+From the project root, run all tests (unit and integration):
+
+```bash
+go test ./...
+```
+
+- **Integration only** (full run path against a local HTTP server):  
+  `go test ./test/...`
+- **Unit tests for a single package**:  
+  `go test ./pkg/netutil/...`  
+  `go test ./internal/stats/...`  
+  `go test ./internal/engine/...`
+- **Verbose** output:  
+  `go test -v ./...`
+- **Single test** by name:  
+  `go test -run TestRun_RequiresURL ./test/...`
+
+For detailed documentation of what each test does and why, see [TEST.md](TEST.md).
