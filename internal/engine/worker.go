@@ -12,11 +12,12 @@ import (
 )
 
 // worker runs as one "process": it spawns cfg.Pipeline goroutines (one per pipeline
-// slot) so that many requests are in flight concurrently per worker. All share the
-// same http.Client and collector. connections is reserved for future per-worker
-// connection limits.
+// slot) so that many requests are in flight concurrently per worker. durationDone
+// is closed when the benchmark duration ends; workers stop starting new requests
+// but let in-flight requests complete. ctx is cancelled on SIGINT to abort immediately.
 func worker(
 	ctx context.Context,
+	durationDone <-chan struct{},
 	client *http.Client,
 	cfg Config,
 	connections int,
@@ -34,17 +35,18 @@ func worker(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runPipelineSlot(ctx, client, cfg, collector)
+			runPipelineSlot(ctx, durationDone, client, cfg, collector)
 		}()
 	}
 	wg.Wait()
 }
 
-// runPipelineSlot issues HTTP requests in a loop until the context is done.
-// One goroutine per pipeline slot gives concurrent in-flight requests per worker.
-// When cfg.Body is set (POST/PUT/PATCH), each request is built with a fresh body reader.
+// runPipelineSlot issues HTTP requests in a loop until ctx is cancelled or durationDone
+// is closed. When durationDone closes, we stop after the current request completes
+// so in-flight requests are not aborted by a timeout.
 func runPipelineSlot(
 	ctx context.Context,
+	durationDone <-chan struct{},
 	client *http.Client,
 	cfg Config,
 	collector *stats.Collector,
@@ -64,6 +66,8 @@ func runPipelineSlot(
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-durationDone:
 			return
 		default:
 			// With a body we must create a new request each time (reader is consumed).

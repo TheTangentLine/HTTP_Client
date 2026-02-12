@@ -73,9 +73,13 @@ func (o *Orchestrator) Run() error {
 		o.cfg.Duration.String(),
 	)
 
-	// Context for total duration and signal handling.
-	ctx, cancel := context.WithTimeout(context.Background(), o.cfg.Duration)
+	// Context cancelled only on SIGINT so in-flight requests can complete when duration ends.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// After duration, close this so workers stop starting new requests but finish in-flight ones.
+	durationDone := make(chan struct{})
+	time.AfterFunc(o.cfg.Duration, func() { close(durationDone) })
 
 	// Trap SIGINT for graceful shutdown.
 	sigCh := make(chan os.Signal, 1)
@@ -114,11 +118,11 @@ func (o *Orchestrator) Run() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker(ctx, client, o.cfg, reqsPerWorker, collector)
+			worker(ctx, durationDone, client, o.cfg, reqsPerWorker, collector)
 		}()
 	}
 
-	// Watch for interrupt.
+	// Watch for interrupt (cancel context so workers and renderer exit).
 	go func() {
 		select {
 		case <-sigCh:
