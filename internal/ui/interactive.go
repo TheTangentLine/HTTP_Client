@@ -15,6 +15,7 @@ import (
 type WizardConfig struct {
 	Method      string
 	URL         string
+	Body        []byte
 	Connections int
 	Duration    time.Duration
 	Workers     int
@@ -22,15 +23,18 @@ type WizardConfig struct {
 }
 
 // RunInteractiveWizard collects configuration from the user for `httpcl start`.
-// To avoid extra dependencies in this minimal implementation, it uses bufio
-// instead of a full TUI library; it still respects the high-level spec.
 func RunInteractiveWizard() (*WizardConfig, error) {
 	reader := bufio.NewReader(os.Stdin)
 
 	printWizardHeader()
 
-	readLine := func(prompt, def string) (string, error) {
-		fmt.Printf("%s [%s]: ", prompt, def)
+	// Prompt: bold label, then dim "(required)" or "[default: X]", then ": "
+	promptWithDefault := func(label, def string, required bool) (string, error) {
+		if required {
+			fmt.Printf("%s%s%s %s(required)%s: ", colorBold, label, colorReset, colorDim, colorReset)
+		} else {
+			fmt.Printf("%s%s%s %s[default: %s]%s: ", colorBold, label, colorReset, colorDim, def, colorReset)
+		}
 		text, err := reader.ReadString('\n')
 		if err != nil {
 			return "", err
@@ -42,7 +46,7 @@ func RunInteractiveWizard() (*WizardConfig, error) {
 		return text, nil
 	}
 
-	url, err := readLine("Target URL", "")
+	url, err := promptWithDefault("Target URL", "", true)
 	if err != nil {
 		return nil, err
 	}
@@ -50,21 +54,22 @@ func RunInteractiveWizard() (*WizardConfig, error) {
 		return nil, fmt.Errorf("url is required")
 	}
 
-	method, err := readLine("HTTP method (GET, POST, PUT, DELETE)", "GET")
+	method, err := promptWithDefault("HTTP method (GET, POST, PUT, DELETE)", "GET", false)
 	if err != nil {
 		return nil, err
 	}
+	method = strings.ToUpper(method)
 
-	connStr, err := readLine("Connections (concurrent)", "50")
+	connStr, err := promptWithDefault("Connections (concurrent)", "50", false)
 	if err != nil {
 		return nil, err
 	}
-	connections, err := strconv.Atoi(connStr)
-	if err != nil {
+	connections, _ := strconv.Atoi(connStr)
+	if connections <= 0 {
 		connections = 50
 	}
 
-	durStr, err := readLine("Duration (e.g. 10s, 1m)", "10s")
+	durStr, err := promptWithDefault("Duration (e.g. 10s, 1m)", "10s", false)
 	if err != nil {
 		return nil, err
 	}
@@ -73,27 +78,39 @@ func RunInteractiveWizard() (*WizardConfig, error) {
 		dur = 10 * time.Second
 	}
 
-	workersStr, err := readLine("Workers (goroutines)", "4")
+	workersStr, err := promptWithDefault("Workers (goroutines)", "4", false)
 	if err != nil {
 		return nil, err
 	}
-	workers, err := strconv.Atoi(workersStr)
-	if err != nil {
+	workers, _ := strconv.Atoi(workersStr)
+	if workers <= 0 {
 		workers = 4
 	}
 
-	pipelineStr, err := readLine("Pipeline (requests per connection)", "1")
+	pipelineStr, err := promptWithDefault("Pipeline (requests per connection)", "1", false)
 	if err != nil {
 		return nil, err
 	}
-	pipeline, err := strconv.Atoi(pipelineStr)
-	if err != nil {
+	pipeline, _ := strconv.Atoi(pipelineStr)
+	if pipeline <= 0 {
 		pipeline = 1
 	}
 
+	var body []byte
+	if methodHasBody(method) {
+		bodyStr, err := promptWithDefault("Request body (optional, for POST/PUT/PATCH)", "", false)
+		if err != nil {
+			return nil, err
+		}
+		if bodyStr != "" {
+			body = []byte(bodyStr)
+		}
+	}
+
 	cfg := &WizardConfig{
-		Method:      strings.ToUpper(method),
+		Method:      method,
 		URL:         url,
+		Body:        body,
 		Connections: connections,
 		Duration:    dur,
 		Workers:     workers,
@@ -103,28 +120,43 @@ func RunInteractiveWizard() (*WizardConfig, error) {
 	return cfg, nil
 }
 
+func methodHasBody(m string) bool {
+	switch m {
+	case "POST", "PUT", "PATCH":
+		return true
+	default:
+		return false
+	}
+}
+
 // printWizardHeader renders a simple, responsive ASCII header for the wizard.
 func printWizardHeader() {
 	width := 80
 	if w := os.Getenv("COLUMNS"); w != "" {
-		// Best-effort; ignore parse errors and fall back to default.
 		if v, err := strconv.Atoi(w); err == nil && v > 20 {
 			width = v
 		}
 	}
-	if width > 60 {
-		width = 60
+	if width > 64 {
+		width = 64
 	}
+	inner := width - 2
+	hLine := strings.Repeat("─", inner)
 
-	border := ""
-	for i := 0; i < width; i++ {
-		border += "="
+	// Pad so each line content (visible) + padding = inner for aligned right border.
+	pad := func(n int) int {
+		if n < 0 {
+			return 0
+		}
+		return n
 	}
-
+	line1Len := 1 + 24 // " " + "httpcl interactive setup"
+	line2Len := 1 + 49 // " " + "Answer the following to configure your benchmark."
 	fmt.Println()
-	fmt.Println(border)
-	fmt.Println(" httpcl interactive setup")
-	fmt.Println(border)
-	fmt.Println(" Answer the following questions to configure your benchmark.")
+	fmt.Printf("┌%s┐\n", hLine)
+	fmt.Printf("│ %shttpcl interactive setup%s%s│\n", colorBold, colorReset, strings.Repeat(" ", pad(inner-line1Len)))
+	fmt.Printf("├%s┤\n", hLine)
+	fmt.Printf("│ %sAnswer the following to configure your benchmark.%s%s│\n", colorDim, colorReset, strings.Repeat(" ", pad(inner-line2Len)))
+	fmt.Printf("└%s┘\n", hLine)
 	fmt.Println()
 }
