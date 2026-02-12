@@ -20,6 +20,7 @@ var rootCmd = &cobra.Command{
 var (
 	flagMethod      string
 	flagURL         string
+	flagBody        string
 	flagConnections int
 	flagDuration    time.Duration
 	flagWorkers     int
@@ -39,6 +40,7 @@ func init() {
 			cfg := engine.Config{
 				Method:      wcfg.Method,
 				URL:         wcfg.URL,
+				Body:        wcfg.Body,
 				Connections: wcfg.Connections,
 				Duration:    wcfg.Duration,
 				Workers:     wcfg.Workers,
@@ -57,9 +59,14 @@ func init() {
 				return fmt.Errorf("url is required (use -u or --url)")
 			}
 
+			var body []byte
+			if flagBody != "" {
+				body = []byte(flagBody)
+			}
 			cfg := engine.Config{
 				Method:      flagMethod,
 				URL:         flagURL,
+				Body:        body,
 				Connections: flagConnections,
 				Duration:    flagDuration,
 				Workers:     flagWorkers,
@@ -72,6 +79,7 @@ func init() {
 
 	runCmd.Flags().StringVarP(&flagMethod, "method", "m", "GET", "HTTP method")
 	runCmd.Flags().StringVarP(&flagURL, "url", "u", "", "Target URL")
+	runCmd.Flags().StringVarP(&flagBody, "body", "b", "", "Request body for POST/PUT/PATCH")
 	runCmd.Flags().IntVarP(&flagConnections, "connections", "c", 10, "Number of concurrent persistent connections")
 	runCmd.Flags().DurationVarP(&flagDuration, "duration", "d", 10*time.Second, "Total test duration (e.g. 10s, 2m, 1h)")
 	runCmd.Flags().IntVarP(&flagWorkers, "workers", "w", 1, "Number of CPU workers/goroutines to spawn")

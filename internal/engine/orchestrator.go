@@ -56,10 +56,13 @@ func (o *Orchestrator) Run() error {
 	if err := netutil.PreflightDNS(o.cfg.URL); err != nil {
 		return err
 	}
+	fmt.Println()
+	ui.PrintStepResult("DNS", "OK", true)
 
 	// Basic ulimit warning (best-effort, *nix only).
 	if err := netutil.CheckUlimitWarning(o.cfg.Connections); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		ui.PrintStepResult("Ulimit", "warning", false)
 	}
 
 	ui.PrintRunHeader(
