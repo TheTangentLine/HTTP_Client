@@ -51,7 +51,7 @@ Launches a wizard that asks for URL, method, connections, duration, workers, and
 httpcl start
 ```
 
-Follow the prompts in the terminal; once confirmed, the benchmark runs and a live HUD plus final report are shown.
+Follow the prompts in the terminal; once confirmed, the benchmark runs and shows a live HUD plus final report.
 
 #### Direct mode (`httpcl run`)
 
