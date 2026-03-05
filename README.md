@@ -6,7 +6,7 @@
 
 Below is a short demo of `httpcl` in action:
 
-![HTTPCL demo](https://github.com/user-attachments/assets/e8c599d7-e109-4581-9979-f1a0204677dd)
+![HTTPCL demo](https://github.com/user-attachments/assets/f26edf15-6e37-4b5b-83d2-20a8a0aa938e)
 
 ### Requirements
 
